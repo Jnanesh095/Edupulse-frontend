@@ -1,0 +1,1 @@
+import api from"./axios";export const loginApi=d=>api.post("/auth/login",d);export const registerApi=d=>api.post("/auth/register",d);

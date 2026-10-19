@@ -1,0 +1,1 @@
+import api from"./axios";export const getStudents=()=>api.get("/students");export const createStudent=d=>api.post("/students",d);export const updateStudent=(id,d)=>api.put(`/students/${id}`,d);export const deleteStudent=id=>api.delete(`/students/${id}`);

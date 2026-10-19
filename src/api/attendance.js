@@ -1,0 +1,1 @@
+import api from"./axios";export const getAttendance=()=>api.get("/attendance");export const createAttendance=d=>api.post("/attendance",d);export const deleteAttendance=id=>api.delete(`/attendance/${id}`);

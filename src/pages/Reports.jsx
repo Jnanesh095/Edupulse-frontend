@@ -1,0 +1,269 @@
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { FileBarChart2, Printer, RefreshCw } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { getAttendance } from "../api/attendance";
+import { getStudents } from "../api/students";
+
+export default function Reports() {
+  const { user } = useAuth();
+
+  const [attendance, setAttendance] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [fromDate, setFromDate] = useState("2026-10-01");
+  const [toDate, setToDate] = useState("2026-10-18");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [attendanceResponse, studentsResponse] = await Promise.all([
+        getAttendance(),
+        getStudents(),
+      ]);
+
+      setAttendance(attendanceResponse.data || []);
+      setStudents(studentsResponse.data || []);
+    } catch (err) {
+      console.error("Failed to load attendance report:", err);
+      setError(
+        "Unable to load report data. Check that the API Gateway and required services are running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const report = useMemo(() => {
+    const filteredAttendance = attendance.filter((record) => {
+      return (
+        record.date >= fromDate &&
+        record.date <= toDate
+      );
+    });
+
+    return students
+      .map((student) => {
+        const records = filteredAttendance.filter(
+          (record) => Number(record.studentId) === Number(student.studentId)
+        );
+
+        const present = records.filter(
+          (record) =>
+            String(record.status).toUpperCase() === "PRESENT"
+        ).length;
+
+        const absent = records.filter(
+          (record) =>
+            String(record.status).toUpperCase() === "ABSENT"
+        ).length;
+
+        const total = present + absent;
+        const percentage =
+          total > 0 ? Math.round((present / total) * 10000) / 100 : 0;
+
+        return {
+          studentId: student.studentId,
+          name: student.name,
+          studentClass: student.studentClass,
+          section: student.section,
+          present,
+          absent,
+          total,
+          percentage,
+        };
+      })
+      .sort((a, b) => Number(a.studentId) - Number(b.studentId));
+  }, [attendance, students, fromDate, toDate]);
+
+  const totals = useMemo(() => {
+    return report.reduce(
+      (acc, student) => ({
+        present: acc.present + student.present,
+        absent: acc.absent + student.absent,
+        total: acc.total + student.total,
+      }),
+      { present: 0, absent: 0, total: 0 }
+    );
+  }, [report]);
+
+  const overallPercentage =
+    totals.total > 0
+      ? ((totals.present / totals.total) * 100).toFixed(2)
+      : "0.00";
+
+  function handlePrint() {
+    window.print();
+  }
+
+  return (
+    <div className="attendance-report-page">
+      <div className="pagehead row no-print">
+        <div>
+          <span className="purple">DOCUMENTS</span>
+          <h1>Attendance Reports</h1>
+          <p>Generate and print attendance summaries for all students.</p>
+        </div>
+
+        <div className="report-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={loadData}
+            disabled={loading}
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            className="primary"
+            onClick={handlePrint}
+            disabled={loading || Boolean(error)}
+          >
+            <Printer size={16} />
+            Print Report
+          </button>
+        </div>
+      </div>
+
+      <div className="panel report-filters no-print">
+        <h3>Report filters</h3>
+
+        <div className="report-filter-fields">
+          <label>
+            From date
+            <input
+              type="date"
+              value={fromDate}
+              max={toDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </label>
+
+          <label>
+            To date
+            <input
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </label>
+        </div>
+      </div>
+
+      {error && <div className="error no-print">{error}</div>}
+
+      {loading ? (
+        <div className="panel">Loading attendance report...</div>
+      ) : !error ? (
+        <div className="panel report-print-area">
+          <div className="report-heading">
+            <FileBarChart2 size={32} />
+            <div>
+              <h2>EduPulse Academy</h2>
+              <h3>Student Attendance Report</h3>
+              <p>
+                Reporting period: {fromDate} to {toDate}
+              </p>
+              <p>
+                Generated by: {user?.username || "User"} (
+                {user?.role || "N/A"})
+              </p>
+            </div>
+          </div>
+
+          <div className="report-summary">
+            <div className="report-stat">
+              <span>Total students</span>
+              <strong>{students.length}</strong>
+            </div>
+
+            <div className="report-stat">
+              <span>Present records</span>
+              <strong>{totals.present}</strong>
+            </div>
+
+            <div className="report-stat">
+              <span>Absent records</span>
+              <strong>{totals.absent}</strong>
+            </div>
+
+            <div className="report-stat">
+              <span>Overall attendance</span>
+              <strong>{overallPercentage}%</strong>
+            </div>
+          </div>
+
+          <div className="scroll report-table-scroll">
+            <table className="attendance-report-table">
+              <thead>
+                <tr>
+                  <th>Student ID</th>
+                  <th>Student Name</th>
+                  <th>Class</th>
+                  <th>Section</th>
+                  <th>Present</th>
+                  <th>Absent</th>
+                  <th>Total</th>
+                  <th>Attendance %</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {report.map((student) => (
+                  <tr key={student.studentId}>
+                    <td>{student.studentId}</td>
+                    <td>{student.name}</td>
+                    <td>{student.studentClass}</td>
+                    <td>{student.section}</td>
+                    <td>{student.present}</td>
+                    <td>{student.absent}</td>
+                    <td>{student.total}</td>
+                    <td>{student.percentage.toFixed(2)}%</td>
+                  </tr>
+                ))}
+
+                {report.length === 0 && (
+                  <tr>
+                    <td colSpan="8">No students found.</td>
+                  </tr>
+                )}
+              </tbody>
+
+              <tfoot>
+                <tr>
+                  <th colSpan="4">Overall totals</th>
+                  <th>{totals.present}</th>
+                  <th>{totals.absent}</th>
+                  <th>{totals.total}</th>
+                  <th>{overallPercentage}%</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <p className="report-note">
+            Attendance percentage is calculated as present records divided
+            by recorded Present and Absent entries. Students with no
+            recorded attendance have 0.00%.
+          </p>
+
+          <div className="report-signatures">
+            <div>Prepared by: __________________</div>
+            <div>Authorized signature: __________________</div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
